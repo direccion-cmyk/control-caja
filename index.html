@@ -407,6 +407,29 @@
     border-radius: var(--radius-lg);
     box-shadow: 0 20px 60px rgba(0,0,0,.5);
   }
+  .modal-loading {
+    display: none;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+
+  .mov-foto-btn {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    cursor: pointer;
+    margin-top: 6px;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    padding: 0;
+    transition: transform .15s, background .15s;
+  }
+  .mov-foto-btn:hover { transform: scale(1.06); background: var(--verde-light); }
 
   /* TOAST */
   .toast {
@@ -534,6 +557,7 @@
 
 <!-- MODAL FOTO -->
 <div class="modal-bg" id="modal-bg" onclick="this.classList.remove('open')">
+  <div class="modal-loading" id="modal-loading">Cargando foto...</div>
   <img id="modal-img" src="" alt="Foto de caja" />
 </div>
 
@@ -770,6 +794,14 @@ function limpiarForm() {
 
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// Un movimiento "tiene foto" ya sea que la tengamos completa en memoria
+// (recien agregada en esta sesion, o ya vista/descargada antes) o que el
+// servidor nos haya avisado que existe (tieneFoto) sin mandarnos los datos
+// pesados todavia.
+function tieneFotoMov(m) {
+  return !!(m.imagen || m.imagenCache || m.tieneFoto);
+}
+
 function renderHistorial() {
   const cont = document.getElementById('historial');
   if (!movimientos.length) {
@@ -779,7 +811,17 @@ function renderHistorial() {
   cont.innerHTML = movimientos.map(m => {
     const monto = parseFloat(m.monto) || 0;
     const saldo = parseFloat(m.saldoDespues) || 0;
-    const thumbHtml = m.imagen ? `<img class="mov-thumb" src="${m.imagen}" alt="foto" onclick="verFoto('${m.id}')" />` : '';
+    const srcYaDisponible = m.imagen || m.imagenCache;
+    let thumbHtml = '';
+    if (srcYaDisponible) {
+      // Ya tenemos la imagen en memoria (no hace falta pedirla al servidor).
+      thumbHtml = `<img class="mov-thumb" src="${srcYaDisponible}" alt="foto" onclick="verFoto('${m.id}')" />`;
+    } else if (m.tieneFoto) {
+      // El servidor solo nos avisó que existe una foto; se pide bajo demanda
+      // al tocarla, para no cargar cientos de fotos de golpe cada vez que
+      // se abre la app.
+      thumbHtml = `<button class="mov-foto-btn" onclick="verFoto('${m.id}')" title="Ver foto">📷</button>`;
+    }
     const fechaStr = (m.fecha || '').replace('T', ' ');
     return `<div class="mov ${m.tipo}">
       <div class="mov-ico ${m.tipo === 'retiro' ? 'r' : 'i'}">${m.tipo === 'retiro' ? '↑' : '↓'}</div>
@@ -797,11 +839,47 @@ function renderHistorial() {
   }).join('');
 }
 
-function verFoto(id) {
+async function verFoto(id) {
   const mov = movimientos.find(m => String(m.id) === String(id));
-  if (!mov || !mov.imagen) return;
-  document.getElementById('modal-img').src = mov.imagen;
-  document.getElementById('modal-bg').classList.add('open');
+  if (!mov) return;
+
+  const modalImg = document.getElementById('modal-img');
+  const modalBg = document.getElementById('modal-bg');
+  const modalLoading = document.getElementById('modal-loading');
+
+  const srcListo = mov.imagen || mov.imagenCache;
+  if (srcListo) {
+    // Ya la teniamos en memoria: se muestra al instante, sin red.
+    modalImg.style.display = 'block';
+    modalLoading.style.display = 'none';
+    modalImg.src = srcListo;
+    modalBg.classList.add('open');
+    return;
+  }
+
+  if (!mov.tieneFoto) return;
+
+  // Foto no descargada todavia: se pide al servidor solo en este momento.
+  modalImg.style.display = 'none';
+  modalLoading.style.display = 'block';
+  modalBg.classList.add('open');
+
+  try {
+    const res = await fetchConReintento(`${API_URL}?action=getFoto&id=${id}&clave=${CLAVE_CORRECTA}`);
+    const json = await res.json();
+    if (json.ok && json.imagen) {
+      mov.imagenCache = json.imagen;
+      modalImg.src = json.imagen;
+      modalImg.style.display = 'block';
+      modalLoading.style.display = 'none';
+    } else {
+      modalBg.classList.remove('open');
+      toast('No se pudo cargar la foto');
+    }
+  } catch (e) {
+    modalBg.classList.remove('open');
+    toast('Sin conexión al cargar la foto');
+  }
 }
 
 let toastTimer;
