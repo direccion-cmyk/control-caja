@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Diagnostico Control de Caja</title>
+</head>
+<body style="font-family:-apple-system,monospace;white-space:pre-wrap;padding:18px;font-size:14px;line-height:1.5;background:#fff;color:#111;">
+<h3 style="margin-top:0;">Diagnóstico de conexión</h3>
+<div id="out">Iniciando prueba...</div>
+<button onclick="location.reload()" style="margin-top:16px;padding:10px 16px;font-size:14px;">Repetir prueba</button>
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbyCOvPcz54LB3GKVAREEsY2YBI2nt4PI5NWHwXhmOuvxZ16MfCw7w2-5ZtZd4v52h1F/exec';
+const out = document.getElementById('out');
+function log(s){ out.textContent += '\n\n' + s; }
+
+out.textContent = 'Hora: ' + new Date().toLocaleTimeString('es-MX');
+log('Origen de esta página: ' + location.origin);
+log('Navegador: ' + navigator.userAgent);
+log('¿Online según el navegador?: ' + navigator.onLine);
+
+(async () => {
+  log('--- Probando fetch() al backend ---');
+  try {
+    const t0 = Date.now();
+    const res = await fetch(API_URL + '?action=getAll&clave=popo');
+    const ms = Date.now() - t0;
+    log('fetch() respondió en ' + ms + 'ms. status=' + res.status + ' ok=' + res.ok);
+    log('Cabecera Access-Control-Allow-Origin: ' + (res.headers.get('access-control-allow-origin') || '(no presente)'));
+    const txt = await res.text();
+    log('Primeros 150 caracteres de la respuesta:\n' + txt.slice(0,150));
+  } catch (e) {
+    log('fetch() FALLÓ.\nTipo de error: ' + e.name + '\nMensaje: ' + e.message);
+  }
+})();
+</script>
+</body>
+</html>
